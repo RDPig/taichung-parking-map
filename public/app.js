@@ -1,0 +1,13 @@
+const map=L.map('map',{preferCanvas:true}).setView([24.1477,120.6736],13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+let features=[];
+const colors={0:'#16a34a',1:'#dc2626',2:'#64748b'};
+const names={0:'空位',1:'已占用',2:'感測器故障'};
+const escapeHTML=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function draw(){layer.clearLayers();const enabled=new Set([['vacant',0],['occupied',1],['unknown',2]].filter(([id])=>document.getElementById(id).checked).map(([,s])=>s));for(const f of features){const p=f.properties;if(!enabled.has(p.status))continue;const [lng,lat]=f.geometry.coordinates;const marker=L.circleMarker([lat,lng],{radius:5,weight:1,color:'#fff',fillColor:colors[p.status],fillOpacity:.9});const url=`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;marker.bindPopup(`<strong>${escapeHTML(names[p.status])}</strong><br>車格：${escapeHTML(p.id)}<br>路段：${escapeHTML(p.section)}<br><a href="${url}" target="_blank" rel="noopener noreferrer">Google 地圖導航</a>`);layer.addLayer(marker);}}
+async function load(){document.getElementById('updated').textContent='更新中…';try{const res=await fetch('/api/parking',{cache:'no-store'});const data=await res.json();if(!res.ok||!data.meta?.fresh)throw Error(data.meta?.error||'目前無可用的新鮮資料');features=data.features;draw();const counts=[0,1,2].map(s=>features.filter(f=>f.properties.status===s).length);document.getElementById('stats').textContent=`總車格 ${features.length.toLocaleString()}｜空位 ${counts[0]}｜占用 ${counts[1]}｜故障 ${counts[2]}`;document.getElementById('updated').textContent=`資料取得：${new Date(data.meta.fetchedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})}（臺灣時間）${data.meta.error?'｜上游暫時失敗，使用快取':''}`;}catch(e){features=[];draw();document.getElementById('stats').textContent='目前無法提供可靠的停車格狀態';document.getElementById('updated').textContent=`資料異常：${e.message}`;}}
+for(const id of ['vacant','occupied','unknown'])document.getElementById(id).addEventListener('change',draw);
+document.getElementById('reload').addEventListener('click',load);
+document.getElementById('locate').addEventListener('click',()=>{if(!navigator.geolocation)return alert('瀏覽器不支援定位');navigator.geolocation.getCurrentPosition(p=>{const lat=p.coords.latitude,lng=p.coords.longitude;map.setView([lat,lng],16);L.circleMarker([lat,lng],{radius:8,color:'#2563eb'}).addTo(map).bindPopup('目前位置').openPopup();},e=>alert('無法取得定位：'+e.message),{enableHighAccuracy:true,timeout:12000});});
+load();setInterval(load,60000);
